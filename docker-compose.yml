@@ -1,0 +1,106 @@
+services:
+  # ─── Relational Store ───────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: logistics_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ─── Document Store ─────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7
+    container_name: logistics_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DB}
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping').ok"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ─── Graph Store ────────────────────────────────────────────────────────────
+  neo4j:
+    image: neo4j:5-community
+    container_name: logistics_neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '[]'
+    ports:
+      - "7474:7474"   # Browser UI
+      - "7687:7687"   # Bolt
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+
+  # ─── Application ────────────────────────────────────────────────────────────
+  event-router:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: logistics_event_router
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    environment:
+      # Postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      # Mongo
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_HOST: mongo
+      MONGO_PORT: 27017
+      MONGO_DB: ${MONGO_DB}
+      # Neo4j
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      # App
+      API_PORT: ${API_PORT:-3000}
+      LOG_FILE: /data/events.log
+      RETRY_QUEUE_FILE: /data/retry_queue.json
+    ports:
+      - "${API_PORT:-3000}:3000"
+    volumes:
+      - ./events.log:/data/events.log:ro
+      - ./retry_queue.json:/data/retry_queue.json
+
+volumes:
+  postgres_data:
+  mongo_data:
+  neo4j_data:

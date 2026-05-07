@@ -1,0 +1,19 @@
+{
+  "name": "logistics-event-router",
+  "version": "1.0.0",
+  "description": "Polyglot persistence event router for a real-time logistics platform",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": ["polyglot", "persistence", "logistics", "neo4j", "mongodb", "postgresql"],
+  "author": "Logistics Platform Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "mongoose": "^8.4.1",
+    "neo4j-driver": "^5.21.0",
+    "pg": "^8.12.0"
+  }
+}
