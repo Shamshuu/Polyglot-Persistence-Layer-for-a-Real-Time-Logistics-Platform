@@ -1,0 +1,36 @@
+1. Start the Project
+docker compose up --build -d
+
+
+2. Verify API Functionality
+
+Test 1: Health Check Ensure the API is up and running.
+curl.exe -s http://localhost:3000/health
+
+Test 2: Complete Package History (Unified Query)
+curl.exe -s http://localhost:3000/query/package/pkg-complete-history-101
+
+Test 3: Out-of-Order Billing (Eventual Consistency)
+curl.exe -s http://localhost:3000/query/package/pkg-out-of-order-123
+
+Test 4: Duplicate Invoice Check
+curl.exe -s http://localhost:3000/query/package/pkg-abc-123
+
+
+3. Verify Database States & Retry Queue
+
+Test 5: Check the Retry Queue
+cat retry_queue.json
+
+Test 6: Verify Relational Store (PostgreSQL)
+docker exec logistics_postgres psql -U logistics_user -d logistics_db -c "SELECT invoice_id, package_id, amount, status FROM invoices ORDER BY created_at;"
+
+Test 7: Verify Graph Store (Neo4j)
+docker exec logistics_neo4j cypher-shell -u neo4j -p change_me_neo4j "MATCH (d:Driver)-[:LOCATED_IN]->(z:Zone) RETURN d.driverId AS driver_id, z.zoneId AS zone_id ORDER BY d.driverId"
+
+Test 8: Verify Document Store (MongoDB)
+docker exec logistics_mongo mongosh --username logistics_user --password change_me_mongo --authenticationDatabase admin logistics_db --quiet --eval "db.packages.find({},{package_id:1,'status_history.status':1,_id:0}).toArray().forEach(p=>print(JSON.stringify(p)))"
+
+
+4. Cleanup
+docker compose down -v
