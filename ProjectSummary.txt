@@ -1,0 +1,56 @@
+Project Overview & Purpose
+
+This project implements a Polyglot Persistence Layer for a real-time logistics platform. In modern, data-heavy applications, a single "one-size-fits-all" database rarely performs well for every type of query. The purpose of this project is to demonstrate how to route a single stream of events into three distinct databases, each chosen because it perfectly matches a specific query pattern. It also tackles the real-world challenge of Eventual Consistency, ensuring the system gracefully handles out-of-order events.
+
+How Functionalities Are Implemented:
+
+
+Event Ingestion & Routing (ingestor.js)
+
+The application acts as a central router. On startup, it reads events.log line-by-line (simulating a real-time message queue like Kafka).
+It parses the JSON payload and uses a switch statement to instantly route the event to the appropriate specialized database handler based on the event type.
+It is built to be resilient, logging errors and continuing execution if it encounters malformed data.
+
+
+Eventual Consistency & The Retry Queue (billingHandler.js & reconciler.js)
+
+In distributed systems, events arrive out of order (e.g., a billing invoice arrives before the package is marked "DELIVERED").
+Before inserting a billing record, the application queries the Document database. If the package isn't delivered yet, the invoice is parked in a local retry_queue.json file.
+Once main ingestion is done, a Reconciler process loops through the retry queue, re-checks the package status, and safely processes the invoice once the prerequisite (delivery) is met.
+
+
+Unified Query API (queryRouter.js)
+
+The system exposes a single REST endpoint (GET /query/package/:id) to the client.
+When called, the Express API performs parallel queries across all three databases. It dynamically links data (e.g., pulling a driver_id from the document store to query the graph store for their location).
+It standardizes the mixed data formats, merges them, sorts them by timestamp, and returns a unified, chronological history of the package's lifecycle.
+
+
+Technologies Used & Why They Were Chosen
+
+Node.js & Express.js (The Application Layer)
+
+Why it helps: Node.js uses asynchronous, non-blocking I/O. This is critical for polyglot persistence because the API needs to make network requests to three different databases simultaneously (Promise.all) without freezing the application.
+
+
+Neo4j (Graph Database)
+
+Use Case: Tracking Drivers and their Zones.
+Why it helps: Graph databases treat relationships as first-class citizens. Using the Cypher MERGE command, it instantly maps a Driver node to a Zone node with a LOCATED_IN relationship. Querying "Where is this driver?" or "Who is in this zone?" takes milliseconds, completely avoiding the slow, expensive JOIN operations required in SQL.
+
+
+MongoDB (Document Database)
+
+Use Case: Storing the Append-Only Package Status History.
+Why it helps: A package's history is essentially a growing list of events. MongoDB’s schema-less nature and atomic $push operator allow us to seamlessly append new status updates to a single JSON-like document. There is no need for complex schema migrations if we want to add new data fields to a status event in the future.
+
+
+PostgreSQL (Relational Database)
+
+Use Case: Storing Financial / Billing Invoices.
+Why it helps: When dealing with money, strict rules apply. PostgreSQL provides robust ACID (Atomicity, Consistency, Isolation, Durability) guarantees. By utilizing a UNIQUE(invoice_id) constraint at the database level, the system physically prevents duplicate billing records from ever being stored, ensuring financial integrity.
+
+
+Docker & Docker Compose (Containerization)
+
+Why it helps: Orchestrating an app that relies on three separate databases is incredibly complex. Docker Compose allows us to define the network, spin up the Node app, Neo4j, MongoDB, and PostgreSQL simultaneously, and enforce startup order using built-in healthchecks, making the entire ecosystem runnable with a single command.
